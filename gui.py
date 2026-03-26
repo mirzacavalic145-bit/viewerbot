@@ -2,10 +2,12 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext, filedialog, messagebox
 import threading
 import requests
+import re
 import time
 import random
 import queue
 import os
+import string
 from random import shuffle
 from fake_useragent import UserAgent
 from streamlink import Streamlink
@@ -36,6 +38,13 @@ PROXY_SOURCES = {
         "https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/protocols/http/data.txt",
         "https://raw.githubusercontent.com/Zaeem20/FREE_PROXY_LIST/master/http.txt",
         "https://raw.githubusercontent.com/Zaeem20/FREE_PROXY_LIST/master/https.txt",
+        # Residential / rotating proxy sources
+        "https://raw.githubusercontent.com/im-razvan/proxy_list/main/http.txt",
+        "https://raw.githubusercontent.com/proxy4parsing/proxy-list/main/http.txt",
+        "https://raw.githubusercontent.com/vakhov/fresh-proxy-list/master/http.txt",
+        "https://raw.githubusercontent.com/ObcbO/getproxy/master/http.txt",
+        "https://raw.githubusercontent.com/zevtyardt/proxy-list/main/http.txt",
+        "https://raw.githubusercontent.com/STARTER-X7/Proxy-List/main/http.txt",
     ],
     "socks4": [
         "https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks4.txt",
@@ -75,6 +84,81 @@ PROXY_TYPE_OPTIONS = ["All", "HTTP/HTTPS", "SOCKS4", "SOCKS5"]
 PROXIES_DIR = "Proxies_txt"
 GOOD_PROXY_FILE = os.path.join(PROXIES_DIR, "good_proxy.txt")
 SCRAPED_PROXY_FILE = os.path.join(PROXIES_DIR, "scraped_proxies.txt")
+
+# ─── Realistic Browser Fingerprints ──────────────────────────────────────────
+
+CHROME_VERSIONS = [
+    "120.0.0.0", "121.0.0.0", "122.0.0.0", "123.0.0.0", "124.0.0.0",
+    "125.0.0.0", "126.0.0.0", "127.0.0.0", "128.0.0.0", "129.0.0.0",
+]
+
+OS_STRINGS = [
+    "Windows NT 10.0; Win64; x64",
+    "Windows NT 10.0; WOW64",
+    "Macintosh; Intel Mac OS X 10_15_7",
+    "Macintosh; Intel Mac OS X 13_6_1",
+    "X11; Linux x86_64",
+    "X11; Ubuntu; Linux x86_64",
+]
+
+SCREEN_RESOLUTIONS = [
+    (1920, 1080), (2560, 1440), (1366, 768), (1536, 864),
+    (1440, 900), (1280, 720), (3840, 2160), (1680, 1050),
+]
+
+LANGUAGES = [
+    "en-US,en;q=0.9", "en-US,en;q=0.9,es;q=0.8",
+    "en-GB,en;q=0.9", "en-US,en;q=0.9,fr;q=0.8",
+    "en-US,en;q=0.9,de;q=0.8", "en,en-US;q=0.9",
+]
+
+TWITCH_CLIENT_IDS = [
+    "kimne78kx3ncx6brgo4mv6wki5h1ko",  # Main web client
+    "ue6666qo983tsx6so1t0vnawi233wa",   # Alternate web client
+]
+
+
+def generate_device_id():
+    return ''.join(random.choices(string.ascii_lowercase + string.digits, k=32))
+
+
+def generate_browser_fingerprint():
+    """Generate a unique, realistic browser fingerprint for each viewer."""
+    chrome_ver = random.choice(CHROME_VERSIONS)
+    os_str = random.choice(OS_STRINGS)
+    screen = random.choice(SCREEN_RESOLUTIONS)
+    lang = random.choice(LANGUAGES)
+    device_id = generate_device_id()
+
+    user_agent = (
+        f"Mozilla/5.0 ({os_str}) AppleWebKit/537.36 "
+        f"(KHTML, like Gecko) Chrome/{chrome_ver} Safari/537.36"
+    )
+
+    headers = {
+        "User-Agent": user_agent,
+        "Accept": "application/vnd.apple.mpegurl, application/x-mpegURL, */*",
+        "Accept-Language": lang,
+        "Accept-Encoding": "gzip, deflate, br",
+        "Origin": "https://www.twitch.tv",
+        "Referer": "https://www.twitch.tv/",
+        "Sec-Ch-Ua": f'"Chromium";v="{chrome_ver.split(".")[0]}", "Google Chrome";v="{chrome_ver.split(".")[0]}", "Not?A_Brand";v="99"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"' if "Windows" in os_str else '"macOS"' if "Mac" in os_str else '"Linux"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "cross-site",
+        "Connection": "keep-alive",
+    }
+
+    return {
+        "headers": headers,
+        "user_agent": user_agent,
+        "device_id": device_id,
+        "client_id": random.choice(TWITCH_CLIENT_IDS),
+        "screen": screen,
+        "lang": lang,
+    }
 
 
 class App(tk.Tk):
@@ -159,7 +243,7 @@ class App(tk.Tk):
         row = ttk.Frame(frame)
         row.pack(fill="x", padx=16, pady=(16, 4))
         ttk.Label(row, text="Twitch Channel:").pack(side="left")
-        self.channel_var = tk.StringVar(value="triixrll")
+        self.channel_var = tk.StringVar(value="mama_keke685")
         ttk.Entry(row, textvariable=self.channel_var, width=30).pack(side="left", padx=(8, 0))
 
         # Threads
@@ -170,14 +254,13 @@ class App(tk.Tk):
         ttk.Spinbox(row2, from_=1, to=5000, textvariable=self.threads_var,
                      width=8).pack(side="left", padx=(8, 0))
 
-        # Proxy file
+        # Proxy type
         row3 = ttk.Frame(frame)
         row3.pack(fill="x", padx=16, pady=4)
-        ttk.Label(row3, text="Proxy File:").pack(side="left")
-        self.proxy_file_var = tk.StringVar(value=GOOD_PROXY_FILE)
-        ttk.Entry(row3, textvariable=self.proxy_file_var, width=40).pack(side="left", padx=(8, 0))
-        ttk.Button(row3, text="Browse", style="Accent.TButton",
-                    command=self._browse_proxy_file).pack(side="left", padx=(6, 0))
+        ttk.Label(row3, text="Proxy Type:").pack(side="left")
+        self.bot_proxy_type_var = tk.StringVar(value="All")
+        ttk.Combobox(row3, textvariable=self.bot_proxy_type_var,
+                     values=PROXY_TYPE_OPTIONS, state="readonly", width=15).pack(side="left", padx=(8, 0))
 
         # Buttons
         btn_row = ttk.Frame(frame)
@@ -193,6 +276,46 @@ class App(tk.Tk):
         self.bot_status_var = tk.StringVar(value="Idle")
         ttk.Label(frame, textvariable=self.bot_status_var,
                   font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=16, pady=(8, 0))
+
+        # ── Twitch Live Views section ──
+        viewer_frame = ttk.Frame(frame)
+        viewer_frame.pack(fill="x", padx=16, pady=(16, 4))
+
+        ttk.Label(viewer_frame, text="Twitch Live Views",
+                  style="Header.TLabel").pack(anchor="w")
+
+        # Viewer count label
+        self.viewer_count_var = tk.StringVar(value="0 viewers connected")
+        ttk.Label(viewer_frame, textvariable=self.viewer_count_var,
+                  font=("Segoe UI", 11, "bold"), foreground="#58a6ff",
+                  background="#1a1a2e").pack(anchor="w", pady=(4, 2))
+
+        # Progress bar (indeterminate = loading animation when active)
+        style = ttk.Style()
+        style.configure("Viewer.Horizontal.TProgressbar",
+                        troughcolor="#16213e", background="#e94560",
+                        thickness=25)
+        self.viewer_progress = ttk.Progressbar(
+            viewer_frame, style="Viewer.Horizontal.TProgressbar",
+            mode="determinate", length=500, maximum=100
+        )
+        self.viewer_progress.pack(fill="x", pady=(2, 4))
+
+        # Animated loading bar (indeterminate bouncing bar)
+        style.configure("Loading.Horizontal.TProgressbar",
+                        troughcolor="#16213e", background="#58a6ff",
+                        thickness=8)
+        self.loading_bar = ttk.Progressbar(
+            viewer_frame, style="Loading.Horizontal.TProgressbar",
+            mode="indeterminate", length=500
+        )
+        self.loading_bar.pack(fill="x", pady=(0, 4))
+
+        # Peak / total label
+        self.viewer_detail_var = tk.StringVar(value="Peak: 0 | Total sent: 0")
+        ttk.Label(viewer_frame, textvariable=self.viewer_detail_var,
+                  font=("Segoe UI", 9), foreground="#888",
+                  background="#1a1a2e").pack(anchor="w")
 
     def _build_scraper_tab(self, notebook):
         frame = ttk.Frame(notebook)
@@ -320,11 +443,6 @@ class App(tk.Tk):
 
     # ── File Browsing ─────────────────────────────────────────────────────
 
-    def _browse_proxy_file(self):
-        path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
-        if path:
-            self.proxy_file_var.set(path)
-
     def _browse_check_input(self):
         path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
         if path:
@@ -338,19 +456,17 @@ class App(tk.Tk):
             messagebox.showwarning("Warning", "Enter a Twitch channel name.")
             return
 
-        proxy_file = self.proxy_file_var.get().strip()
-        if not os.path.isfile(proxy_file):
-            messagebox.showwarning("Warning", f"Proxy file not found: {proxy_file}")
-            return
-
         self.bot_stop_event.clear()
         self.bot_running = True
         self.start_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
-        self.bot_status_var.set(f"Running on #{channel}")
-        self.log(f"[BOT] Starting viewer bot for #{channel}")
+        self.bot_status_var.set(f"Scraping proxies...")
+        self.viewer_count_var.set("Starting...")
+        self.viewer_progress["value"] = 0
+        self.loading_bar.start(15)
+        self.log(f"[BOT] Scraping proxies before starting bot for #{channel}...")
 
-        t = threading.Thread(target=self._bot_worker, args=(channel, proxy_file), daemon=True)
+        t = threading.Thread(target=self._bot_worker, args=(channel,), daemon=True)
         t.start()
 
     def _stop_bot(self):
@@ -359,83 +475,308 @@ class App(tk.Tk):
         self.start_btn.configure(state="normal")
         self.stop_btn.configure(state="disabled")
         self.bot_status_var.set("Stopped")
+        self.loading_bar.stop()
         self.log("[BOT] Stop signal sent.")
 
-    def _bot_worker(self, channel, proxy_file):
-        try:
-            ua = UserAgent()
-            sl_session = Streamlink()
-            sl_session.set_option("http-headers", {
-                "User-Agent": ua.random,
-                "Client-ID": "ewvlchtxgqq88ru9gmfp1gmyt6h2b93"
-            })
+    def _scrape_proxies(self, proxy_type):
+        """Scrape proxies from public sources and return them as a list."""
+        sources = self._get_sources_for_type(proxy_type)
+        all_proxies = set()
+        for src in sources:
+            if self.bot_stop_event.is_set():
+                break
+            try:
+                self.log(f"[BOT] Scraping: {src[:60]}...")
+                resp = requests.get(src, timeout=15)
+                if resp.status_code == 200:
+                    for line in resp.text.strip().splitlines():
+                        proxy = line.strip().split()[0]
+                        if proxy and ":" in proxy and self._is_valid_proxy_format(proxy):
+                            all_proxies.add(proxy)
+            except Exception:
+                pass
+        return list(all_proxies)
 
+    def _check_proxies(self, proxies):
+        """Check proxies concurrently and return only fast, working ones."""
+        good = []
+        lock = threading.Lock()
+        checked = {"count": 0}
+        total = len(proxies)
+        test_url = "http://httpbin.org/ip"
+
+        def check_one(proxy):
+            if self.bot_stop_event.is_set():
+                return
+            proxy_dict = {"http": f"http://{proxy}", "https": f"http://{proxy}"}
+            try:
+                start = time.time()
+                resp = requests.get(test_url, proxies=proxy_dict, timeout=3)
+                elapsed = time.time() - start
+                if resp.status_code == 200 and elapsed < 3:
+                    with lock:
+                        good.append(proxy)
+                    self.log(f"[CHECK] GOOD ({elapsed:.1f}s): {proxy}")
+            except Exception:
+                pass
+            finally:
+                with lock:
+                    checked["count"] += 1
+                    if checked["count"] % 100 == 0 or checked["count"] == total:
+                        self.bot_status_var.set(
+                            f"Checked {checked['count']}/{total} | Good: {len(good)}"
+                        )
+
+        self.log(f"[CHECK] Testing {total} proxies with 500 workers (timeout 3s)...")
+        with ThreadPoolExecutor(max_workers=500) as pool:
+            futures = {pool.submit(check_one, p): p for p in proxies}
+            for f in as_completed(futures):
+                if self.bot_stop_event.is_set():
+                    pool.shutdown(wait=False, cancel_futures=True)
+                    break
+
+        self.log(f"[CHECK] {len(good)} / {total} proxies passed")
+        return good
+
+    def _bot_worker(self, channel):
+        try:
             channel_url = f"https://www.twitch.tv/{channel}"
             max_threads = self.threads_var.get()
 
-            # Load proxies
-            with open(proxy_file) as f:
-                proxies = [line.strip() for line in f if line.strip()]
+            # Scrape proxies
+            proxy_type = self.bot_proxy_type_var.get()
+            raw_proxies = self._scrape_proxies(proxy_type)
 
-            if not proxies:
-                self.log("[BOT] No proxies found in file!")
+            if not raw_proxies:
+                self.log("[BOT] No proxies scraped!")
+                self.bot_status_var.set("Failed - no proxies")
                 return
 
-            self.log(f"[BOT] Loaded {len(proxies)} proxies, using {max_threads} threads")
+            self.log(f"[BOT] Scraped {len(raw_proxies)} proxies. Now checking quality...")
+            self.bot_status_var.set(f"Checking {len(raw_proxies)} proxies...")
 
-            all_proxy_data = [{"proxy": p, "time": time.time(), "url": ""} for p in proxies]
-            shuffle(all_proxy_data)
+            # Only keep fast, working proxies
+            proxies = self._check_proxies(raw_proxies)
 
-            # Get stream URL
-            def get_url():
+            if not proxies:
+                self.log("[BOT] No working proxies found!")
+                self.bot_status_var.set("Failed - no working proxies")
+                return
+
+            self.log(f"[BOT] {len(proxies)} high-quality proxies ready")
+
+            # Get the HLS master playlist URL via Streamlink
+            self.bot_status_var.set("Fetching stream...")
+            self.log("[BOT] Getting stream playlist URL...")
+
+            master_url = None
+            for attempt in range(3):
+                if self.bot_stop_event.is_set():
+                    return
                 try:
+                    sl_session = Streamlink()
+                    sl_session.set_option("http-headers", {
+                        "Client-ID": random.choice(TWITCH_CLIENT_IDS),
+                        "User-Agent": generate_browser_fingerprint()["user_agent"],
+                    })
                     streams = sl_session.streams(channel_url)
                     if "audio_only" in streams:
-                        return streams["audio_only"].url
+                        master_url = streams["audio_only"].url
                     elif "worst" in streams:
-                        return streams["worst"].url
-                except Exception:
-                    pass
-                return ""
+                        master_url = streams["worst"].url
+                    if master_url:
+                        self.log(f"[BOT] Got stream URL")
+                        break
+                except Exception as e:
+                    self.log(f"[BOT] Stream attempt {attempt+1} failed: {e}")
+                    time.sleep(3)
 
-            def send_request(proxy_data):
-                try:
-                    if proxy_data["url"] == "":
-                        proxy_data["url"] = get_url()
-                    if not proxy_data["url"]:
+            if not master_url:
+                self.log("[BOT] Could not get stream URL. Make sure the channel is LIVE.")
+                self.bot_status_var.set("Failed - channel not live")
+                return
+
+            # Ensure each proxy is only used by one viewer at a time
+            used_proxies = set()
+            proxy_lock = threading.Lock()
+            active_viewers = {"count": 0, "peak": 0, "total_sent": 0}
+            viewer_lock = threading.Lock()
+            total_proxies = len(proxies)
+
+            def update_viewer_count(delta):
+                with viewer_lock:
+                    active_viewers["count"] += delta
+                    if delta > 0:
+                        active_viewers["total_sent"] += 1
+                    if active_viewers["count"] > active_viewers["peak"]:
+                        active_viewers["peak"] = active_viewers["count"]
+                    count = active_viewers["count"]
+                    peak = active_viewers["peak"]
+                    total = active_viewers["total_sent"]
+                self.bot_status_var.set(
+                    f"Running on #{channel} | Viewers: {count} | Proxies: {total_proxies}"
+                )
+                self.viewer_count_var.set(f"{count} viewers connected")
+                self.viewer_progress["maximum"] = max(total_proxies, 1)
+                self.viewer_progress["value"] = count
+                self.viewer_detail_var.set(f"Peak: {peak} | Total sent: {total}")
+
+            def simulate_viewer(proxy_str):
+                """Simulate a real browser viewer using HLS segment downloading."""
+                # Claim this proxy
+                with proxy_lock:
+                    if proxy_str in used_proxies:
                         return
-                    if time.time() - proxy_data["time"] >= random.randint(1, 5):
-                        proxy_dict = {"http": proxy_data["proxy"], "https": proxy_data["proxy"]}
-                        headers = {"User-Agent": ua.random}
-                        with requests.Session() as s:
-                            resp = s.head(proxy_data["url"], proxies=proxy_dict,
-                                          headers=headers, timeout=10)
-                        self.log(f"[BOT] {proxy_data['proxy']} | {resp.status_code}")
-                        proxy_data["time"] = time.time()
+                    used_proxies.add(proxy_str)
+
+                connected = False
+                try:
+                    # Each viewer gets a unique browser fingerprint
+                    fp = generate_browser_fingerprint()
+                    proxy_dict = {"http": f"http://{proxy_str}", "https": f"http://{proxy_str}"}
+
+                    session = requests.Session()
+                    session.proxies = proxy_dict
+                    session.headers.update(fp["headers"])
+                    session.timeout = 15
+
+                    # Step 1: Fetch the HLS master playlist (like a real player does)
+                    try:
+                        playlist_resp = session.get(master_url, timeout=15)
+                        if playlist_resp.status_code != 200:
+                            return
+                    except Exception:
+                        return
+
+                    connected = True
+                    update_viewer_count(1)
+                    self.log(f"[BOT] VIEWER connected: {proxy_str}")
+
+                    # Random watch duration: 2-8 minutes like a real viewer
+                    watch_minutes = random.uniform(2, 8)
+                    watch_duration = watch_minutes * 60
+                    end_time = time.time() + watch_duration
+                    segment_count = 0
+
+                    # Step 2: Parse playlist and download segments like a real HLS player
+                    while not self.bot_stop_event.is_set() and time.time() < end_time:
+                        try:
+                            # Re-fetch the playlist periodically (HLS players do this)
+                            playlist_resp = session.get(master_url, timeout=10)
+                            if playlist_resp.status_code != 200:
+                                break
+
+                            playlist_text = playlist_resp.text
+
+                            # Extract .ts segment URLs from the playlist
+                            segment_urls = re.findall(
+                                r'(https?://[^\s]+\.ts[^\s]*)', playlist_text
+                            )
+
+                            if not segment_urls:
+                                # If no full URLs, look for relative paths
+                                lines = playlist_text.strip().split('\n')
+                                segment_urls = [
+                                    l.strip() for l in lines
+                                    if l.strip() and not l.strip().startswith('#')
+                                ]
+
+                            if not segment_urls:
+                                # Fallback: just consume the stream directly
+                                try:
+                                    stream_resp = session.get(
+                                        master_url, timeout=10, stream=True
+                                    )
+                                    for chunk in stream_resp.iter_content(chunk_size=8192):
+                                        if self.bot_stop_event.is_set() or time.time() > end_time:
+                                            break
+                                        segment_count += 1
+                                except Exception:
+                                    break
+                                continue
+
+                            # Download each segment (like a real video player)
+                            for seg_url in segment_urls[-3:]:  # Only latest segments
+                                if self.bot_stop_event.is_set() or time.time() > end_time:
+                                    break
+
+                                try:
+                                    seg_resp = session.get(seg_url, timeout=10, stream=True)
+                                    # Read all the segment data
+                                    for chunk in seg_resp.iter_content(chunk_size=16384):
+                                        if self.bot_stop_event.is_set():
+                                            break
+                                    segment_count += 1
+                                except Exception:
+                                    pass
+
+                                # Small random delay between segments (realistic)
+                                time.sleep(random.uniform(0.5, 2.0))
+
+                            # Wait before refreshing playlist (HLS standard ~2-6s)
+                            time.sleep(random.uniform(2.0, 6.0))
+
+                        except Exception:
+                            time.sleep(2)
+
+                    self.log(
+                        f"[BOT] VIEWER done: {proxy_str} | "
+                        f"{watch_minutes:.1f}min | {segment_count} segments"
+                    )
+
                 except Exception:
                     pass
+                finally:
+                    if connected:
+                        update_viewer_count(-1)
+                    with proxy_lock:
+                        used_proxies.discard(proxy_str)
+                    try:
+                        session.close()
+                    except Exception:
+                        pass
 
-            while not self.bot_stop_event.is_set():
-                threads = []
-                for i in range(min(max_threads, len(all_proxy_data))):
-                    if self.bot_stop_event.is_set():
-                        break
-                    pd = all_proxy_data[random.randint(0, len(all_proxy_data) - 1)]
-                    t = threading.Thread(target=send_request, args=(pd,), daemon=True)
-                    t.start()
-                    threads.append(t)
-                shuffle(all_proxy_data)
-                # Wait with periodic stop checks
-                for _ in range(10):
-                    if self.bot_stop_event.is_set():
-                        break
-                    time.sleep(0.5)
+            # Main loop: keep spawning viewers
+            self.bot_status_var.set(f"Running on #{channel} | Starting viewers...")
+            self.log(f"[BOT] Launching viewers with {max_threads} threads...")
+
+            with ThreadPoolExecutor(max_workers=max_threads) as pool:
+                while not self.bot_stop_event.is_set():
+                    shuffle(proxies)
+                    futures = []
+                    for proxy in proxies:
+                        if self.bot_stop_event.is_set():
+                            break
+                        with proxy_lock:
+                            if proxy in used_proxies:
+                                continue
+                        futures.append(pool.submit(simulate_viewer, proxy))
+                        # Stagger viewer launches (real users don't all join at once)
+                        time.sleep(random.uniform(0.1, 0.5))
+
+                    # Wait for current batch with periodic stop checks
+                    for f in futures:
+                        if self.bot_stop_event.is_set():
+                            break
+                        try:
+                            f.result(timeout=2)
+                        except Exception:
+                            pass
+
+                    # Brief pause before cycling
+                    if not self.bot_stop_event.is_set():
+                        time.sleep(random.uniform(1, 3))
 
         except Exception as e:
             self.log(f"[BOT] Error: {e}")
         finally:
             self.log("[BOT] Bot stopped.")
             self.bot_running = False
+            self.start_btn.configure(state="normal")
+            self.stop_btn.configure(state="disabled")
+            self.bot_status_var.set("Idle")
+            self.loading_bar.stop()
+            self.viewer_count_var.set("0 viewers connected")
 
     # ── Proxy Scraper ─────────────────────────────────────────────────────
 
@@ -463,7 +804,6 @@ class App(tk.Tk):
                     for line in lines:
                         proxy = line.strip()
                         if proxy and ":" in proxy:
-                            # Extract just ip:port (some lists have extra columns)
                             parts = proxy.split()
                             proxy = parts[0]
                             if self._is_valid_proxy_format(proxy):
@@ -486,7 +826,6 @@ class App(tk.Tk):
         self.scrape_status_var.set(f"Done - {len(all_proxies)} proxies scraped")
         self.scrape_btn.configure(state="normal")
         self.scraper_running = False
-        # Auto-load scraped file into checker and start checking
         self.check_input_var.set(output_path)
         self.log(f"[SCRAPER] Auto-starting proxy checker...")
         self.after(500, self._start_checker)
@@ -599,9 +938,7 @@ class App(tk.Tk):
         self.check_btn.configure(state="normal")
         self.check_stop_btn.configure(state="disabled")
         self.checker_running = False
-        # Auto-load good proxies into the bot's proxy file
-        self.proxy_file_var.set(output_file)
-        self.log(f"[CHECKER] Auto-loaded {len(good)} good proxies into Viewer Bot.")
+        self.log(f"[CHECKER] Good proxies ready for use.")
 
     def _update_checker_progress(self, checked, total, good_count, bad_count):
         self.check_progress["value"] = checked
